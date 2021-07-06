@@ -24,7 +24,7 @@ mnemonic39
  - Optional passphrase can be used with the entropy or mnemonic for additional protection.
 * **Suggestions**
  - Show suggestion of a valid mnemonic word if one invalid is inserted.
-* **Support all languages specified on [bip-0039](https://github.com/bitcoin/bips/blob/master/bip-0039-wordlists.md)**
+* **Support all languages specified on [bip-0039](https://github.com/bitcoin/bips/blob/master/bip-0039/bip-0039-wordlists.md)**
  - Chinese (Simplified)
  - Chinese (Traditional)
  - Czech
