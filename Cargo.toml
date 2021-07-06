@@ -1,0 +1,37 @@
+# mnemonic39/Cargo.toml
+# 20210706
+# ceca69ec8e1bcad6c6d79e1dcf7214ff67766580a62b7d19a6fb094c97b4f2dc
+
+[package]
+name = "mnemonic39"
+version = "1.0.0"
+authors = ["ceca69ec8e1bcad6c6d79e1dcf7214ff67766580a62b7d19a6fb094c97b4f2dc"]
+edition = "2018"
+include = [
+	"src/**/*",
+	"Cargo.toml",
+	"README.md"
+]
+description = "Implementation of bip-0039 for use on command line interface."
+documentation = "https://github.com/ceca69ec/mnemonic39"
+homepage = "https://github.com/ceca69ec/mnemonic39"
+repository = "https://github.com/ceca69ec/mnemonic39"
+keywords = [
+	"bip-0039",
+	"bitcoin",
+	"cli",
+	"mnemonic"
+]
+categories = ["command-line-interface"]
+license = "Apache-2.0"
+readme = "README.md"
+
+[dependencies]
+bs58 = "0.4.0"
+clap = "2.33.3"
+hmac = "0.11.0"
+itertools = "0.10.1"
+pbkdf2 = { version = "0.8.0", default-features = false }
+sha2 = "0.9.5"
+strsim = "0.8.0"
+unicode-normalization = "0.1.19"
