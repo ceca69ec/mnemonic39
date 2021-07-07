@@ -41,7 +41,7 @@ Insert mnemonic and target language flag to result in words in the same 'positio
 ## What this tool *don't* do
 * **Generate entropy**
     - Pseudo-random generators are not used. You have to insert entropy, if it's the case (see more bellow).
-* **[Derivation](https://github.com/ceca69ec/derivation32)**
+* **[Derivation](https://crates.io/crates/derivation32)**
     - This tool do not generate any type of address.
 
 ## Suggestion for generating entropy
