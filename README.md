@@ -6,24 +6,24 @@ mnemonic39
 ## Disclaimer
 
 * **Don't trust, verify**
-Compare the results of this tool with others. Verify the implementation (and the tests). **Use at your won risk.**
+    - Compare the results of this tool with others. Verify the implementation (and the tests). **Use at your won risk.**
 
 ## Features
 
 * **Generate a list of valid last words**
-Insert a mnemonic lacking the last word and a list of possible valid last words (that fulfill the checksum) is showed.
+    - Insert a mnemonic missing the last word and a list of possible valid last words (that fulfill the checksum) is showed.
 * **Generate extended keys**
-Insert entropy or mnemonic to show extended root keys.
+    - Insert entropy or mnemonic to show extended root keys.
 * **Generate mnemonics**
-Insert entropy and optional passphrase to generate mnemonic in any of the languages supported in bip-0039.
+    - Insert entropy and optional passphrase to generate mnemonic in any of the languages supported in bip-0039.
 * **Generate multiple mnemonics based on a list of valid words**
-Insert 12, 15, 18, 21 or 24 valid words in any supported language and flag `-g` to show multiple mnemonics with valid checksum.
+    - Insert 12, 15, 18, 21 or 24 valid words in any supported language and flag `-g` to show multiple mnemonics with valid checksum.
 * **Generate seed**
-When hexadecimal entropy is inserted the tool show the seed to.
+    - When hexadecimal entropy is inserted the tool show the seed to.
 * **Passphrase**
-Optional passphrase can be used with the entropy or mnemonic for additional protection.
+    - Optional passphrase can be used with the entropy or mnemonic for additional protection.
 * **Suggestions**
-Show suggestion of a valid mnemonic word if one invalid is inserted.
+    - Show suggestion of a valid mnemonic word if one invalid is inserted.
 * **Support all languages specified on [bip-0039](https://github.com/bitcoin/bips/blob/master/bip-0039/bip-0039-wordlists.md)**
     - [Chinese (Simplified)](https://github.com/bitcoin/bips/blob/master/bip-0039/chinese_simplified.txt)
     - [Chinese (Traditional)](https://github.com/bitcoin/bips/blob/master/bip-0039/chinese_traditional.txt)
@@ -40,16 +40,16 @@ Insert mnemonic and target language flag to result in words in the same 'positio
 
 ## What this tool *don't* do
 * **Generate entropy**
-Pseudo-random generators are not used. You have to insert entropy, if it's the case (see more bellow).
+    - Pseudo-random generators are not used. You have to insert entropy, if it's the case (see more bellow).
 * **[Derivation](https://github.com/ceca69ec/derivation32)**
-This tool do not generate any type of address.
+    - This tool do not generate any type of address.
 
 ## Suggestion for generating entropy
 
 * **Disclaimer**
-This is just one (and maybe not the best one) of various methods that can be used to generate random numbers. Again: use at your won risk.
+    - This is just one (and maybe not the best one) of various methods that can be used to generate random numbers. Again: use at your won risk.
 * **What you need**
-A `d20` (a dice with 20 faces, very common on rpg).
+    - A `d20` (a dice with 20 faces, very common on rpg).
 * **Values**
     - **1-9**: `use the value`.
     - **10**: `a`
