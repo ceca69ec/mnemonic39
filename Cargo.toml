@@ -1,10 +1,6 @@
-# mnemonic39/Cargo.toml
-# 20210707
-# ceca69ec8e1bcad6c6d79e1dcf7214ff67766580a62b7d19a6fb094c97b4f2dc
-
 [package]
 name = "mnemonic39"
-version = "1.0.1"
+version = "1.0.2"
 authors = ["ceca69ec8e1bcad6c6d79e1dcf7214ff67766580a62b7d19a6fb094c97b4f2dc"]
 edition = "2018"
 include = [
@@ -22,7 +18,10 @@ keywords = [
 	"cli",
 	"mnemonic"
 ]
-categories = ["command-line-interface"]
+categories = [
+	"command-line-interface",
+	"cryptography::cryptocurrencies"
+]
 license = "Apache-2.0"
 readme = "README.md"
 
