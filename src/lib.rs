@@ -83,8 +83,8 @@
 //!
 //! ## Help
 //!
-//! ```bash
-//! mnemonic39 1.0.2
+//! ```shell
+//! mnemonic39 1.0.3
 //! Enter optional language and hexadecimal entropy with optional passphrase or
 //! enter a list of mnemonic words with optional passphrase to see information
 //! about it. It can show a list of valid last words to fulfil a list of mnemonic
@@ -419,6 +419,28 @@ impl BytesManipulation for [u8] {
     fn unchecked_len(&self) -> usize {
         if self.len() % 2 != 0 { return self.len() - 1; }
         self.len()
+    }
+}
+
+/// Implementation of enum Error.
+impl Error {
+    /// Retrieve the status code to be showed when exiting because of an error.
+    #[doc(hidden)]
+    pub fn status(&self) -> i32 {
+        match self {
+            Error::Checksum => 1,
+            Error::Data(..) => 2,
+            Error::Flag(_) => 3,
+            Error::HexStr(_) => 4,
+            Error::Hmac => 5,
+            Error::Last => 6,
+            Error::NbBytes(_) => 7,
+            Error::NbWords(_) => 8,
+            Error::Parse => 9,
+            Error::SameLang => 10,
+            Error::Seed(_) => 11,
+            Error::Word(..) => 12
+        }
     }
 }
 

@@ -8,6 +8,6 @@ use mnemonic39::{init_clap, handle_arguments};
 fn main() {
     handle_arguments(&init_clap().get_matches()).unwrap_or_else(|err| {
         eprintln!("\x1b[31m\x1b[1merror\x1b[m: {}", err);
-        std::process::exit(96);
+        std::process::exit(err.status());
     });
 }
