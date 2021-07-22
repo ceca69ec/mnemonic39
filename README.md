@@ -80,13 +80,13 @@ zprvAWgYBBk7JR8GjQdaFzTSaQeJaCj3Xvu99ED9J5MvxumnvSSXho8ZvNXDKxNqU3MRCbdJSZoHEAVk
 
 * **Transposition**
 
-    Insert mnemonic and target language flag to result in words in the same 'position' on the
- new word-list.
+    Insert mnemonic and target language flag to result in words in the same 'position' on the new
+ word-list.
 
 ## Help
 
 ```shell
-mnemonic39 1.0.3
+mnemonic39 1.0.4
 Enter optional language and hexadecimal entropy with optional passphrase or
 enter a list of mnemonic words with optional passphrase to see information
 about it. It can show a list of valid last words to fulfil a list of mnemonic
@@ -115,6 +115,15 @@ OPTIONS:
 
 ARGS:
     <DATA>...    hexadecimal entropy, seed or a list of mnemonic words
+```
+
+## Installation
+
+You have to install [rust](https://www.rust-lang.org/tools/install) and a
+ [liker](https://gcc.gnu.org/wiki/InstallingGCC) if you don't already have them.
+
+```shell
+$ cargo install mnemonic39
 ```
 
 ## What this tool *don't* do

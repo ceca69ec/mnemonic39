@@ -1,6 +1,6 @@
 [package]
 name = "mnemonic39"
-version = "1.0.3"
+version = "1.0.4"
 authors = ["ceca69ec8e1bcad6c6d79e1dcf7214ff67766580a62b7d19a6fb094c97b4f2dc"]
 edition = "2018"
 include = [
@@ -10,7 +10,6 @@ include = [
 ]
 description = "Implementation of bip-0039 for use on command line interface."
 documentation = "https://docs.rs/mnemonic39"
-homepage = "https://crates.io/crates/mnemonic39"
 repository = "https://github.com/ceca69ec/mnemonic39"
 keywords = [
 	"bip-0039",
