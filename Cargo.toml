@@ -1,6 +1,6 @@
 [package]
 name = "mnemonic39"
-version = "1.0.4"
+version = "1.0.5"
 authors = ["ceca69ec8e1bcad6c6d79e1dcf7214ff67766580a62b7d19a6fb094c97b4f2dc"]
 edition = "2018"
 include = [
@@ -31,5 +31,5 @@ hmac = "0.11.0"
 itertools = "0.10.1"
 pbkdf2 = { version = "0.8.0", default-features = false }
 sha2 = "0.9.5"
-strsim = "0.8.0"
+strsim = "0.10.0"
 unicode-normalization = "0.1.19"

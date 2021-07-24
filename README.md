@@ -86,7 +86,7 @@ zprvAWgYBBk7JR8GjQdaFzTSaQeJaCj3Xvu99ED9J5MvxumnvSSXho8ZvNXDKxNqU3MRCbdJSZoHEAVk
 ## Help
 
 ```shell
-mnemonic39 1.0.4
+mnemonic39 1.0.5
 Enter optional language and hexadecimal entropy with optional passphrase or
 enter a list of mnemonic words with optional passphrase to see information
 about it. It can show a list of valid last words to fulfil a list of mnemonic
