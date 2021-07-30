@@ -786,7 +786,7 @@ pub fn handle_arguments(matches: &ArgMatches) -> Result<(), Error> {
         return Err(Error::NbWords(data.len()));
     }
 
-    let passphrase = matches.value_of("passphrase").unwrap_or("");
+    let passphrase = matches.value_of("passphrase").unwrap_or_default();
     let mut lang_flag = String::new();
     for flag in &LANG_FLAGS {
         if matches.is_present(flag) {
