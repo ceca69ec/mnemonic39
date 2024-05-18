@@ -84,35 +84,31 @@
 //! ## Help
 //!
 //! ```shell
-//! mnemonic39 1.0.5
 //! Enter optional language and hexadecimal entropy with optional passphrase or
 //! enter a list of mnemonic words with optional passphrase to see information
 //! about it. It can show a list of valid last words to fulfil a list of mnemonic
 //! words missing the last one. Generate mnemonic using a list of valid words.
 //!
-//! USAGE:
-//!     mnemonic39 [FLAGS] [OPTIONS] <DATA>...
+//! Usage: mnemonic39 [OPTIONS] [DATA]...
 //!
-//! FLAGS:
-//!     -c, --chinese        Mnemonic with chinese simplified words
-//!     -e, --english        Mnemonic with english words
-//!     -f, --french         Mnemonic with french words
-//!     -g, --generate       Generate valid mnemonics permuting words
-//!     -h, --help           Prints help information
-//!     -i, --italian        Mnemonic with italian words
-//!     -j, --japanese       Mnemonic with japanese words
-//!     -k, --korean         Mnemonic with korean words
-//!     -o, --portuguese     Mnemonic with portuguese words
-//!     -s, --spanish        Mnemonic with spanish words
-//!     -t, --traditional    Mnemonic with chinese traditional words
-//!     -V, --version        Prints version information
-//!     -z, --czech          Mnemonic with czech words
+//! Arguments:
+//!   [DATA]...  hexadecimal entropy, seed or a list of mnemonic words
 //!
-//! OPTIONS:
-//!     -p <passphrase>        optional passphrase to be used with the mnemonic
-//!
-//! ARGS:
-//!     <DATA>...    hexadecimal entropy, seed or a list of mnemonic words
+//! Options:
+//!   -c, --chinese        Mnemonic with chinese simplified words
+//!   -e, --english        Mnemonic with english words
+//!   -f, --french         Mnemonic with french words
+//!   -g, --generate       Generate valid mnemonics permuting words
+//!   -i, --italian        Mnemonic with italian words
+//!   -j, --japanese       Mnemonic with japanese words
+//!   -k, --korean         Mnemonic with korean words
+//!   -o, --portuguese     Mnemonic with portuguese words
+//!   -p <passphrase>      optional passphrase to be used with the mnemonic
+//!   -s, --spanish        Mnemonic with spanish words
+//!   -t, --traditional    Mnemonic with chinese traditional words
+//!   -z, --czech          Mnemonic with czech words
+//!   -h, --help           Print help
+//!   -V, --version        Print version
 //! ```
 //!
 //! ## Installation
@@ -133,8 +129,8 @@
 //!
 //!     This tool do not generate any type of address.
 
-use clap::{App, Arg, ArgGroup, ArgMatches};
-use hmac::{Hmac, Mac, NewMac};
+use clap::{crate_version, value_parser, Arg, ArgAction, ArgGroup, ArgMatches, Command};
+use hmac::{Hmac, Mac};
 use itertools::Itertools;
 use pbkdf2::pbkdf2;
 use sha2::{Digest, Sha512};
@@ -157,8 +153,7 @@ mod wordlists {
 use wordlists::*;
 
 /// Instructions to use the binary in command line interface.
-const ABOUT: &str =
-"Enter optional language and hexadecimal entropy with optional passphrase or
+const ABOUT: &str = "Enter optional language and hexadecimal entropy with optional passphrase or
 enter a list of mnemonic words with optional passphrase to see information
 about it. It can show a list of valid last words to fulfil a list of mnemonic
 words missing the last one. Generate mnemonic using a list of valid words.";
@@ -216,7 +211,7 @@ const WORDLISTS: [[&str; 2048]; 10] = [
     japanese::J,
     korean::K,
     portuguese::P,
-    spanish::S
+    spanish::S,
 ];
 
 /// Main net version of bip-0032 extended private keys.
@@ -255,7 +250,7 @@ pub enum Error {
     /// Found invalid seed.
     Seed(String),
     /// Found an invalid word and possibly provided a suggestion.
-    Word(String, String)
+    Word(String, String),
 }
 
 /// Functions to manipulate data in form of arbitrary number of bytes [u8].
@@ -307,7 +302,7 @@ trait StringManipulation {
     fn mnemonic_bytes(&self) -> Result<Vec<u8>, Error>;
 
     /// Generate the seed used to create the root key.
-    fn seed_bytes(&self, passphrase: &str) -> [u8; 64];
+    fn seed_bytes(&self, passphrase: &str) -> Result<[u8; 64], Error>;
 
     /// Show information about entropy informed by user.
     fn show_entropy(&self, option: &str, pass: &str) -> Result<(), Error>;
@@ -337,30 +332,34 @@ trait StringManipulation {
 impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
-            Error::Checksum =>
-                write!(f, "invalid checksum (consider using flag '\x1b[33mg\x1b[m')"),
-            Error::Data(e, n) =>
-                write!(f, "invalid data '\x1b[33m{}\x1b[m' (length: \x1b[33m{}\x1b[m)", e, n),
-            Error::Flag(l) =>
-                write!(f, "'\x1b[33m{}\x1b[m' flag invalid in this context", l),
-            Error::HexStr(s) =>
-                write!(f, "invalid hexadecimal string '\x1b[33m{}\x1b[m'", s),
+            Error::Checksum => write!(
+                f,
+                "invalid checksum (consider using flag '\x1b[33mg\x1b[m')"
+            ),
+            Error::Data(e, n) => write!(
+                f,
+                "invalid data '\x1b[33m{}\x1b[m' (length: \x1b[33m{}\x1b[m)",
+                e, n
+            ),
+            Error::Flag(l) => write!(f, "'\x1b[33m{}\x1b[m' flag invalid in this context", l),
+            Error::HexStr(s) => write!(f, "invalid hexadecimal string '\x1b[33m{}\x1b[m'", s),
             Error::Hmac => write!(f, "invalid input in hmac function"),
             Error::Last => write!(f, "cannot generate last word"),
-            Error::NbBytes(b) =>
-                write!(f, "invalid number of bytes '\x1b[33m{}\x1b[m'", b),
-            Error::NbWords(n) =>
-                write!(f, "invalid number of words '\x1b[33m{}\x1b[m'", n),
+            Error::NbBytes(b) => write!(f, "invalid number of bytes '\x1b[33m{}\x1b[m'", b),
+            Error::NbWords(n) => write!(f, "invalid number of words '\x1b[33m{}\x1b[m'", n),
             Error::Parse => write!(f, "cannot parse required argument"),
             Error::SameLang => write!(f, "same language, nothing to do"),
             Error::Seed(s) => write!(f, "invalid seed '\x1b[33m{}\x1b[m'", s),
             Error::Word(w, s) => write!(
-                f, "invalid word '\x1b[33m{}\x1b[m'{}", w, if s.is_empty() {
+                f,
+                "invalid word '\x1b[33m{}\x1b[m'{}",
+                w,
+                if s.is_empty() {
                     String::new()
                 } else {
                     format!(" (did you mean \x1b[32m{}\x1b[m?)", s)
                 }
-            )
+            ),
         }
     }
 }
@@ -372,7 +371,7 @@ impl BytesManipulation for [u8] {
         let len_bytes = self.unchecked_len();
         let bits = len_bytes * 8 / 32;
         let out = sha2::Sha256::digest(&self[..len_bytes])[0]; // first byte
-        // zeroes least significant bits and return the most to place
+                                                               // zeroes least significant bits and return the most to place
         out >> (8 - bits) << (8 - bits)
     }
 
@@ -426,7 +425,9 @@ impl BytesManipulation for [u8] {
 
     #[inline]
     fn unchecked_len(&self) -> usize {
-        if self.len() % 2 != 0 { return self.len() - 1; }
+        if self.len() % 2 != 0 {
+            return self.len() - 1;
+        }
         self.len()
     }
 }
@@ -448,7 +449,7 @@ impl Error {
             Error::Parse => 9,
             Error::SameLang => 10,
             Error::Seed(_) => 11,
-            Error::Word(..) => 12
+            Error::Word(..) => 12,
         }
     }
 }
@@ -461,17 +462,18 @@ impl SeedBytesManipulation for [u8; 64] {
         hmac.update(self);
         let hmac = hmac.finalize().into_bytes();
         let mut payload = [0u8; NBBY_XKEY];
-        payload[..4].copy_from_slice(version);         // version prefix
-        payload[4] = 0x00;                             // depth
-        payload[5..9].copy_from_slice(&[0x00; 4]);     // parent fingerprint
-        payload[9..13].copy_from_slice(&[0x00; 4]);    // child number
-        payload[13..45].copy_from_slice(&hmac[32..]);  // chain code
-        payload[45] = 0x00;                            // start of private data
-        payload[46..].copy_from_slice(&hmac[..32]);    // private key
+        payload[..4].copy_from_slice(version); // version prefix
+        payload[4] = 0x00; // depth
+        payload[5..9].copy_from_slice(&[0x00; 4]); // parent fingerprint
+        payload[9..13].copy_from_slice(&[0x00; 4]); // child number
+        payload[13..45].copy_from_slice(&hmac[32..]); // chain code
+        payload[45] = 0x00; // start of private data
+        payload[46..].copy_from_slice(&hmac[..32]); // private key
         let mut xkey = [0u8; NBBY_XKEY + NBBY_CSUM];
-        xkey[..78].copy_from_slice(&payload);          // payload
-        xkey[78..].copy_from_slice(                    // checksum
-            &sha2::Sha256::digest(&sha2::Sha256::digest(&payload))[..NBBY_CSUM]
+        xkey[..78].copy_from_slice(&payload); // payload
+        xkey[78..].copy_from_slice(
+            // checksum
+            &sha2::Sha256::digest(&sha2::Sha256::digest(&payload))[..NBBY_CSUM],
         );
         Ok(bs58::encode(xkey).into_string())
     }
@@ -492,14 +494,18 @@ impl StringManipulation for str {
                         invalid = inv.0;
                         best = (*wordlist, inv.1);
                     }
-                },
-                None => return Ok(*wordlist)
+                }
+                None => return Ok(*wordlist),
             }
         }
         if invalid.is_empty() {
             invalid = String::from(self.split_whitespace().collect::<Vec<&str>>()[0]);
         }
-        let suggestion = if best.1 == 0.0 { String::new() } else { invalid.suggestion(&best.0) };
+        let suggestion = if best.1 == 0.0 {
+            String::new()
+        } else {
+            invalid.suggestion(&best.0)
+        };
         Err(Error::Word(invalid, suggestion))
     }
 
@@ -509,7 +515,7 @@ impl StringManipulation for str {
         for index in (0..self.len()).step_by(2) {
             out.push(
                 u8::from_str_radix(&self[index..index + 2], 16)
-                    .map_err(|_| Error::HexStr(String::from(self)))?
+                    .map_err(|_| Error::HexStr(String::from(self)))?,
             );
         }
         Ok(out)
@@ -518,7 +524,9 @@ impl StringManipulation for str {
     #[inline]
     fn is_hex(&self) -> bool {
         for c in self.chars() {
-            if !c.is_ascii_hexdigit() { return false }
+            if !c.is_ascii_hexdigit() {
+                return false;
+            }
         }
         true
     }
@@ -528,7 +536,9 @@ impl StringManipulation for str {
         let nb_words = self.split_whitespace().count();
         let mut nb_ok = 0;
         let mut invalid = String::new();
-        if nb_words == 0 { return Some((String::from(""), 0.0)); }
+        if nb_words == 0 {
+            return Some((String::from(""), 0.0));
+        }
         for word in self.split_whitespace() {
             if wordlist.contains(&word) {
                 nb_ok += 1;
@@ -557,14 +567,16 @@ impl StringManipulation for str {
             "t" => Ok(chinese_traditional::CT),
             "z" => Ok(czech::CZ),
             "" => Ok(english::E),
-            _ => Err(Error::Flag(String::from(self)))
+            _ => Err(Error::Flag(String::from(self))),
         }
     }
 
     #[inline]
     fn last_word(&self) -> Result<Vec<String>, Error> {
         let nb_words = self.split_whitespace().count();
-        if !NB_WORDS.contains(&(nb_words + 1)) { return Err(Error::NbWords(nb_words)); }
+        if !NB_WORDS.contains(&(nb_words + 1)) {
+            return Err(Error::NbWords(nb_words));
+        }
         let bytes = self.mnemonic_bytes()?;
         let wordlist = self.detect_lang()?;
         let nb_available_bits = BITS_WORD - (nb_words + 1) * BITS_WORD / 32;
@@ -577,7 +589,7 @@ impl StringManipulation for str {
             temp.push(bytes[bytes.len() - 1] + nonce);
             match temp.mnemonic_string(&wordlist)?.rsplit_once(separator) {
                 Some(tuple) => out.push(String::from(tuple.1)),
-                None => return Err(Error::Last)
+                None => return Err(Error::Last),
             }
         }
         Ok(out)
@@ -585,7 +597,8 @@ impl StringManipulation for str {
 
     #[inline]
     fn mnemonic_bytes(&self) -> Result<Vec<u8>, Error> {
-        let mnemonic = self.split_whitespace()
+        let mnemonic = self
+            .split_whitespace()
             .map(String::from)
             .collect::<Vec<String>>();
         if !NB_WORDS.contains(&mnemonic.len()) && !NB_WORDS.contains(&(mnemonic.len() + 1)) {
@@ -601,7 +614,9 @@ impl StringManipulation for str {
         let mut remainder = 0;
 
         for word in mnemonic {
-            let index = wordlist.iter().position(|&x| x == word)
+            let index = wordlist
+                .iter()
+                .position(|&x| x == word)
                 .ok_or_else(|| Error::Word(word, String::new()))?;
 
             remainder |= ((index as u32) << (32 - BITS_WORD)) >> offset;
@@ -614,12 +629,14 @@ impl StringManipulation for str {
                 offset -= 8;
             }
         }
-        if offset != 0 { entropy[cursor] = (remainder >> 24) as u8; }
+        if offset != 0 {
+            entropy[cursor] = (remainder >> 24) as u8;
+        }
         Ok(entropy[..nb_bytes].to_vec()) // trim (in case of 21 or less words)
     }
 
     #[inline]
-    fn seed_bytes(&self, passphrase: &str) -> [u8; 64] {
+    fn seed_bytes(&self, passphrase: &str) -> Result<[u8; 64], Error> {
         let mut seed = [0u8; 64];
         let mnemonic_nfkd = self.nfkd().collect::<String>();
         let passphrase_nfkd = passphrase.nfkd().collect::<String>();
@@ -627,15 +644,16 @@ impl StringManipulation for str {
             mnemonic_nfkd.as_bytes(),
             format!("mnemonic{}", passphrase_nfkd).as_bytes(),
             NB_ROUNDS,
-            &mut seed
-        );
-        seed
+            &mut seed,
+        )
+        .map_err(|_| Error::Hmac)?;
+        Ok(seed)
     }
 
     #[inline]
     fn show_entropy(&self, option: &str, pass: &str) -> Result<(), Error> {
         let mnemonic = self.hex_bytes()?.mnemonic_string(&option.choose_lang()?)?;
-        let seed = mnemonic.seed_bytes(pass);
+        let seed = mnemonic.seed_bytes(pass)?;
 
         println!(
             "{}\n{}\n{}\n{}\n{}",
@@ -659,11 +677,13 @@ impl StringManipulation for str {
     #[inline]
     fn show_mnemonic(&self, pass: &str) -> Result<(), Error> {
         let nb_words = self.split_whitespace().count();
-        if !NB_WORDS.contains(&nb_words) { return Err(Error::NbWords(nb_words)); }
+        if !NB_WORDS.contains(&nb_words) {
+            return Err(Error::NbWords(nb_words));
+        }
         let raw_bytes = self.mnemonic_bytes()?;
 
         if raw_bytes.checksum_validation() {
-            let seed = self.seed_bytes(pass);
+            let seed = self.seed_bytes(pass)?;
 
             println!(
                 "{}\n{}\n{}\n{}\n{}",
@@ -682,7 +702,9 @@ impl StringManipulation for str {
     #[inline]
     fn show_permutation(&self) -> Result<(), Error> {
         let nb_words = self.split_whitespace().count();
-        if !NB_WORDS.contains(&nb_words) { return Err(Error::NbWords(nb_words)); }
+        if !NB_WORDS.contains(&nb_words) {
+            return Err(Error::NbWords(nb_words));
+        }
 
         println!("Press CTRL-C to stop.");
 
@@ -722,7 +744,7 @@ impl StringManipulation for str {
 
             println!("{}", transposed);
 
-            let seed = transposed.seed_bytes(pass);
+            let seed = transposed.seed_bytes(pass)?;
 
             println!(
                 "{}\n{}\n{}\n{}\n{}",
@@ -743,8 +765,8 @@ impl StringManipulation for str {
         let mut candidate = ("", 0.0);
         for word in wordlist {
             let confidence = normalized_levenshtein(self, word);
-            if (candidate.1 < confidence || candidate.0.is_empty()) &&
-                confidence >= MIN_CONFIDENCE {
+            if (candidate.1 < confidence || candidate.0.is_empty()) && confidence >= MIN_CONFIDENCE
+            {
                 candidate = (word, confidence);
             }
         }
@@ -754,15 +776,21 @@ impl StringManipulation for str {
     #[inline]
     fn transposition(&self, opt: &str) -> Result<String, Error> {
         let nb_words = self.split_whitespace().count();
-        if !NB_WORDS.contains(&nb_words) { return Err(Error::NbWords(nb_words)); }
+        if !NB_WORDS.contains(&nb_words) {
+            return Err(Error::NbWords(nb_words));
+        }
         let new_lang = opt.choose_lang()?;
         let orig_lang = self.detect_lang()?;
-        if orig_lang == new_lang { return Err(Error::SameLang); }
+        if orig_lang == new_lang {
+            return Err(Error::SameLang);
+        }
         let separator = if new_lang == japanese::J { IDS } else { SPC };
         let mut result = String::new();
 
         for word in self.split_whitespace() {
-            let index = orig_lang.iter().position(|&x| x == word)
+            let index = orig_lang
+                .iter()
+                .position(|&x| x == word)
                 .ok_or_else(|| Error::Word(String::from(word), String::new()))?;
 
             result = result + new_lang[index] + separator;
@@ -774,43 +802,51 @@ impl StringManipulation for str {
 /// Handle arguments and call functions accordingly.
 #[doc(hidden)]
 pub fn handle_arguments(matches: &ArgMatches) -> Result<(), Error> {
-    let data = matches.values_of("DATA")
+    let nothing = "".to_string();
+    let data: Vec<&str> = matches
+        .get_many::<String>("DATA")
         .ok_or(Error::Parse)?
-        .collect::<Vec<&str>>();
+        .map(String::as_str)
+        .collect::<Vec<_>>();
 
     // validate the number of data values
     if data.len() == 1 && data[0].len() != LEN_SEED && !LEN_ENT.contains(&data[0].len()) {
         return Err(Error::Data(String::from(data[0]), data[0].len()));
-    } else if data.len() != 1 && !NB_WORDS.contains(&data.len()) &&
-        !NB_WORDS.contains(&(data.len() + 1)) {
+    } else if data.len() != 1
+        && !NB_WORDS.contains(&data.len())
+        && !NB_WORDS.contains(&(data.len() + 1))
+    {
         return Err(Error::NbWords(data.len()));
     }
 
-    let passphrase = matches.value_of("passphrase").unwrap_or_default();
+    let passphrase = matches.get_one::<String>("passphrase").unwrap_or(&nothing);
     let mut lang_flag = String::new();
     for flag in &LANG_FLAGS {
-        if matches.is_present(flag) {
+        if *matches.get_one::<bool>(flag).unwrap_or(&false) {
             lang_flag = String::from(*flag);
             break; // accepts only one language flag
         }
     }
 
     // if flag 'g' with entropy or invalid number of words
-    if matches.is_present("generate") && !NB_WORDS.contains(&data.len()) {
-        if data.len() == 1 { // if just one, treat as entropy
+    if *matches.get_one::<bool>("generate").unwrap_or(&false) && !NB_WORDS.contains(&data.len()) {
+        if data.len() == 1 {
+            // if just one, treat as entropy
             return Err(Error::Flag(String::from("g")));
-        } else { // treat as invalid number of words to generate
+        } else {
+            // treat as invalid number of words to generate
             return Err(Error::NbWords(data.len()));
         }
     }
 
-    if data.len() == 1 && matches.is_present("passphrase") {
+    if data.len() == 1 && *matches.get_one::<bool>("passphrase").unwrap_or(&false) {
         if LEN_ENT.contains(&data[0].len()) && data[0].is_hex() {
             data[0].show_entropy(&lang_flag, passphrase)?;
         } else {
             return Err(Error::Data(String::from(data[0]), data[0].len()));
         }
-    } else if data.len() == 1 { // possible entropy or seed
+    } else if data.len() == 1 {
+        // possible entropy or seed
         if data[0].len() == LEN_SEED && data[0].is_hex() {
             data[0].show_seed()?;
         } else if LEN_ENT.contains(&data[0].len()) && data[0].is_hex() {
@@ -820,10 +856,14 @@ pub fn handle_arguments(matches: &ArgMatches) -> Result<(), Error> {
         }
     } else if NB_WORDS.contains(&(data.len() + 1)) && lang_flag.is_empty() {
         data.join(SPC).show_last()?;
-    } else if NB_WORDS.contains(&data.len()) && matches.is_present("generate"){
+    } else if NB_WORDS.contains(&data.len())
+        && *matches.get_one::<bool>("generate").unwrap_or(&false)
+    {
         data.join(SPC).show_permutation()?;
-    } else if !lang_flag.is_empty() && !matches.is_present("generate") &&
-        NB_WORDS.contains(&data.len()) {
+    } else if !lang_flag.is_empty()
+        && !*matches.get_one::<bool>("generate").unwrap_or(&false)
+        && NB_WORDS.contains(&data.len())
+    {
         data.join(SPC).show_transposition(&lang_flag, passphrase)?;
     } else if NB_WORDS.contains(&data.len()) {
         data.join(SPC).show_mnemonic(passphrase)?;
@@ -835,80 +875,101 @@ pub fn handle_arguments(matches: &ArgMatches) -> Result<(), Error> {
 
 /// Initialize clap app.
 #[doc(hidden)]
-pub fn init_clap() -> App<'static, 'static> {
-    App::new("mnemonic39")
+pub fn init_clap() -> Command {
+    Command::new("mnemonic39")
         .about(ABOUT)
+        .version(crate_version!())
         .arg(
-            Arg::with_name("DATA")
+            Arg::new("DATA")
                 .help("hexadecimal entropy, seed or a list of mnemonic words")
-                .max_values(MAX_WORDS as u64)
-                .multiple(true)
-                .required(true)
-        ).arg(
-            Arg::with_name("c")
+                .value_parser(value_parser!(String))
+                .num_args(..MAX_WORDS + 1)
+                .required(true),
+        )
+        .arg(
+            Arg::new("c")
                 .help("Mnemonic with chinese simplified words")
                 .long("chinese")
-                .short("c")
-        ).arg(
-            Arg::with_name("e")
+                .short('c')
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("e")
                 .help("Mnemonic with english words")
                 .long("english")
-                .short("e")
-        ).arg(
-            Arg::with_name("f")
+                .short('e')
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("f")
                 .help("Mnemonic with french words")
                 .long("french")
-                .short("f")
-        ).arg(
-            Arg::with_name("generate")
+                .short('f')
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("generate")
                 .group("flags")
                 .help("Generate valid mnemonics permuting words")
                 .long("generate")
-                .short("g")
-        ).arg(
-            Arg::with_name("i")
+                .short('g')
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("i")
                 .help("Mnemonic with italian words")
                 .long("italian")
-                .short("i")
-        ).arg(
-            Arg::with_name("j")
+                .short('i')
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("j")
                 .help("Mnemonic with japanese words")
                 .long("japanese")
-                .short("j")
-        ).arg(
-            Arg::with_name("k")
+                .short('j')
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("k")
                 .help("Mnemonic with korean words")
                 .long("korean")
-                .short("k")
-        ).arg(
-            Arg::with_name("o")
+                .short('k')
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("o")
                 .help("Mnemonic with portuguese words")
                 .long("portuguese")
-                .short("o")
-        ).arg(
-            Arg::with_name("passphrase")
+                .short('o')
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("passphrase")
                 .help("optional passphrase to be used with the mnemonic")
-                .short("p")
-                .takes_value(true)
-        ).arg(
-            Arg::with_name("s")
+                .short('p'),
+        )
+        .arg(
+            Arg::new("s")
                 .help("Mnemonic with spanish words")
                 .long("spanish")
-                .short("s")
-        ).arg(
-            Arg::with_name("t")
+                .short('s')
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("t")
                 .help("Mnemonic with chinese traditional words")
                 .long("traditional")
-                .short("t")
-        ).arg(
-            Arg::with_name("z")
+                .short('t')
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("z")
                 .help("Mnemonic with czech words")
                 .long("czech")
-                .short("z")
-        ).group(
-            ArgGroup::with_name("flags")
-                .args(&LANG_FLAGS)
-        ).version(clap::crate_version!())
+                .short('z')
+                .action(ArgAction::SetTrue),
+        )
+        .group(ArgGroup::new("flags").args(&LANG_FLAGS))
 }
 
 /// Tests for the library.
@@ -947,114 +1008,114 @@ mod tests {
         [
             "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon",
             "abandon", "abandon", "abandon", "about", "", "", "", "", "", "", "", "", "", "", "",
-            ""
+            "",
         ],
         [
             "legal", "winner", "thank", "year", "wave", "sausage", "worth", "useful", "legal",
-            "winner", "thank", "yellow", "", "", "", "", "", "", "", "", "", "", "", ""
+            "winner", "thank", "yellow", "", "", "", "", "", "", "", "", "", "", "", "",
         ],
         [
             "letter", "advice", "cage", "absurd", "amount", "doctor", "acoustic", "avoid",
-            "letter", "advice", "cage", "above", "", "", "", "", "", "", "", "", "", "", "", ""
+            "letter", "advice", "cage", "above", "", "", "", "", "", "", "", "", "", "", "", "",
         ],
         [
             "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "wrong",
-            "", "", "", "", "", "", "", "", "", "", "", ""
+            "", "", "", "", "", "", "", "", "", "", "", "",
         ],
         [
             "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon",
             "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon",
-            "abandon", "agent", "", "", "", "", "", ""
+            "abandon", "agent", "", "", "", "", "", "",
         ],
         [
             "legal", "winner", "thank", "year", "wave", "sausage", "worth", "useful", "legal",
             "winner", "thank", "year", "wave", "sausage", "worth", "useful", "legal", "will", "",
-            "", "", "", "", ""
+            "", "", "", "", "",
         ],
         [
             "letter", "advice", "cage", "absurd", "amount", "doctor", "acoustic", "avoid",
             "letter", "advice", "cage", "absurd", "amount", "doctor", "acoustic", "avoid",
-            "letter", "always", "", "", "", "", "", ""
+            "letter", "always", "", "", "", "", "", "",
         ],
         [
             "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo",
-            "zoo", "zoo", "zoo", "zoo", "zoo", "when", "", "", "", "", "", ""
+            "zoo", "zoo", "zoo", "zoo", "zoo", "when", "", "", "", "", "", "",
         ],
         [
             "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon",
             "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon",
-            "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "art"
+            "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "art",
         ],
         [
             "legal", "winner", "thank", "year", "wave", "sausage", "worth", "useful", "legal",
             "winner", "thank", "year", "wave", "sausage", "worth", "useful", "legal", "winner",
-            "thank", "year", "wave", "sausage", "worth", "title"
+            "thank", "year", "wave", "sausage", "worth", "title",
         ],
         [
             "letter", "advice", "cage", "absurd", "amount", "doctor", "acoustic", "avoid",
             "letter", "advice", "cage", "absurd", "amount", "doctor", "acoustic", "avoid",
-            "letter", "advice", "cage", "absurd", "amount", "doctor", "acoustic", "bless"
+            "letter", "advice", "cage", "absurd", "amount", "doctor", "acoustic", "bless",
         ],
         [
             "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo",
-            "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "vote"
+            "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "zoo", "vote",
         ],
         [
             "ozone", "drill", "grab", "fiber", "curtain", "grace", "pudding", "thank", "cruise",
-            "elder", "eight", "picnic", "", "", "", "", "", "", "", "", "", "", "", ""
+            "elder", "eight", "picnic", "", "", "", "", "", "", "", "", "", "", "", "",
         ],
         [
             "gravity", "machine", "north", "sort", "system", "female", "filter", "attitude",
             "volume", "fold", "club", "stay", "feature", "office", "ecology", "stable", "narrow",
-            "fog", "", "", "", "", "", ""
+            "fog", "", "", "", "", "", "",
         ],
         [
             "hamster", "diagram", "private", "dutch", "cause", "delay", "private", "meat", "slide",
             "toddler", "razor", "book", "happy", "fancy", "gospel", "tennis", "maple", "dilemma",
-            "loan", "word", "shrug", "inflict", "delay", "length"
+            "loan", "word", "shrug", "inflict", "delay", "length",
         ],
         [
             "scheme", "spot", "photo", "card", "baby", "mountain", "device", "kick", "cradle",
-            "pact", "join", "borrow", "", "", "", "", "", "", "", "", "", "", "", ""
+            "pact", "join", "borrow", "", "", "", "", "", "", "", "", "", "", "", "",
         ],
         [
             "horn", "tenant", "knee", "talent", "sponsor", "spell", "gate", "clip", "pulse",
             "soap", "slush", "warm", "silver", "nephew", "swap", "uncle", "crack", "brave", "", "",
-            "", "", "", ""
+            "", "", "", "",
         ],
         [
             "panda", "eyebrow", "bullet", "gorilla", "call", "smoke", "muffin", "taste", "mesh",
             "discover", "soft", "ostrich", "alcohol", "speed", "nation", "flash", "devote",
-            "level", "hobby", "quick", "inner", "drive", "ghost", "inside"
+            "level", "hobby", "quick", "inner", "drive", "ghost", "inside",
         ],
         [
             "cat", "swing", "flag", "economy", "stadium", "alone", "churn", "speed", "unique",
-            "patch", "report", "train", "", "", "", "", "", "", "", "", "", "", "", ""
+            "patch", "report", "train", "", "", "", "", "", "", "", "", "", "", "", "",
         ],
         [
             "light", "rule", "cinnamon", "wrap", "drastic", "word", "pride", "squirrel", "upgrade",
             "then", "income", "fatal", "apart", "sustain", "crack", "supply", "proud", "access",
-            "", "", "", "", "", ""
+            "", "", "", "", "", "",
         ],
         [
             "all", "hour", "make", "first", "leader", "extend", "hole", "alien", "behind", "guard",
             "gospel", "lava", "path", "output", "census", "museum", "junior", "mass", "reopen",
-            "famous", "sing", "advance", "salt", "reform"
+            "famous", "sing", "advance", "salt", "reform",
         ],
         [
             "vessel", "ladder", "alter", "error", "federal", "sibling", "chat", "ability", "sun",
-            "glass", "valve", "picture", "", "", "", "", "", "", "", "", "", "", "", ""
+            "glass", "valve", "picture", "", "", "", "", "", "", "", "", "", "", "", "",
         ],
         [
             "scissors", "invite", "lock", "maple", "supreme", "raw", "rapid", "void", "congress",
             "muscle", "digital", "elegant", "little", "brisk", "hair", "mango", "congress",
-            "clump", "", "", "", "", "", ""
+            "clump", "", "", "", "", "", "",
         ],
         [
             "void", "come", "effort", "suffer", "camp", "survey", "warrior", "heavy", "shoot",
             "primary", "clutch", "crush", "open", "amazing", "screen", "patrol", "group", "space",
-            "point", "ten", "exist", "slush", "involve", "unfold"
-        ]
+            "point", "ten", "exist", "slush", "involve", "unfold",
+        ],
     ];
     const TV_PASS: &str = "TREZOR";
     const TV_SEED: [[&str; 2]; 24] = [
@@ -1153,105 +1214,105 @@ mod tests {
         [
             "01f5bced59dec48e362f2c45b5de68b9fd6c92c6634f44d6d40aab69056506f0e35524a518034ddc1192",
             "e1dacd32c1ed3eaa3c3b131c88ed8e7e54c49a5d0998",
-        ]
+        ],
     ];
     const TV_XKEY: [[&str; 2]; 24] = [
         [
             "xprv9s21ZrQH143K3h3fDYiay8mocZ3afhfULfb5GX8kCBdno77K4HiA15Tg23wpbeF1pLfs1c5SPmYHrEpT",
-            "uuRhxMwvKDwqdKiGJS9XFKzUsAF"
+            "uuRhxMwvKDwqdKiGJS9XFKzUsAF",
         ],
         [
             "xprv9s21ZrQH143K2gA81bYFHqU68xz1cX2APaSq5tt6MFSLeXnCKV1RVUJt9FWNTbrrryem4ZckN8k4Ls1H",
-            "6nwdvDTvnV7zEXs2HgPezuVccsq"
+            "6nwdvDTvnV7zEXs2HgPezuVccsq",
         ],
         [
             "xprv9s21ZrQH143K2shfP28KM3nr5Ap1SXjz8gc2rAqqMEynmjt6o1qboCDpxckqXavCwdnYds6yBHZGKHv7",
-            "ef2eTXy461PXUjBFQg6PrwY4Gzq"
+            "ef2eTXy461PXUjBFQg6PrwY4Gzq",
         ],
         [
             "xprv9s21ZrQH143K2V4oox4M8Zmhi2Fjx5XK4Lf7GKRvPSgydU3mjZuKGCTg7UPiBUD7ydVPvSLtg9hjp7MQ",
-            "TYsW67rZHAXeccqYqrsx8LcXnyd"
+            "TYsW67rZHAXeccqYqrsx8LcXnyd",
         ],
         [
             "xprv9s21ZrQH143K3mEDrypcZ2usWqFgzKB6jBBx9B6GfC7fu26X6hPRzVjzkqkPvDqp6g5eypdk6cyhGnBn",
-            "gbjeHTe4LsuLG1cCmKJka5SMkmU"
+            "gbjeHTe4LsuLG1cCmKJka5SMkmU",
         ],
         [
             "xprv9s21ZrQH143K3Lv9MZLj16np5GzLe7tDKQfVusBni7toqJGcnKRtHSxUwbKUyUWiwpK55g1DUSsw76TF",
-            "1T93VT4gz4wt5RM23pkaQLnvBh7"
+            "1T93VT4gz4wt5RM23pkaQLnvBh7",
         ],
         [
             "xprv9s21ZrQH143K3VPCbxbUtpkh9pRG371UCLDz3BjceqP1jz7XZsQ5EnNkYAEkfeZp62cDNj13ZTEVG1TE",
-            "ro9sZ9grfRmcYWLBhCocViKEJae"
+            "ro9sZ9grfRmcYWLBhCocViKEJae",
         ],
         [
             "xprv9s21ZrQH143K36Ao5jHRVhFGDbLP6FCx8BEEmpru77ef3bmA928BxsqvVM27WnvvyfWywiFN8K6yToqM",
-            "aGYfzS6Db1EHAXT5TuyCLBXUfdm"
+            "aGYfzS6Db1EHAXT5TuyCLBXUfdm",
         ],
         [
             "xprv9s21ZrQH143K32qBagUJAMU2LsHg3ka7jqMcV98Y7gVeVyNStwYS3U7yVVoDZ4btbRNf4h6ibWpY22iR",
-            "mXq35qgLs79f312g2kj5539ebPM"
+            "mXq35qgLs79f312g2kj5539ebPM",
         ],
         [
             "xprv9s21ZrQH143K3Y1sd2XVu9wtqxJRvybCfAetjUrMMco6r3v9qZTBeXiBZkS8JxWbcGJZyio8TrZtm6pk",
-            "bzG8SYt1sxwNLh3Wx7to5pgiVFU"
+            "bzG8SYt1sxwNLh3Wx7to5pgiVFU",
         ],
         [
             "xprv9s21ZrQH143K3CSnQNYC3MqAAqHwxeTLhDbhF43A4ss4ciWNmCY9zQGvAKUSqVUf2vPHBTSE1rB2pg4a",
-            "vopqSiLVzXEU8KziNnVPauTqLRo"
+            "vopqSiLVzXEU8KziNnVPauTqLRo",
         ],
         [
             "xprv9s21ZrQH143K2WFF16X85T2QCpndrGwx6GueB72Zf3AHwHJaknRXNF37ZmDrtHrrLSHvbuRejXcnYxoZ",
-            "KvRquTPyp2JiNG3XcjQyzSEgqCB"
+            "KvRquTPyp2JiNG3XcjQyzSEgqCB",
         ],
         [
             "xprv9s21ZrQH143K2oZ9stBYpoaZ2ktHj7jLz7iMqpgg1En8kKFTXJHsjxry1JbKH19YrDTicVwKPehFKTbm",
-            "axgVEc5TpHdS1aYhB2s9aFJBeJH"
+            "axgVEc5TpHdS1aYhB2s9aFJBeJH",
         ],
         [
             "xprv9s21ZrQH143K3uT8eQowUjsxrmsA9YUuQQK1RLqFufzybxD6DH6gPY7NjJ5G3EPHjsWDrs9iivSbmvjc",
-            "9DQJbJGatfa9pv4MZ3wjr8qWPAK"
+            "9DQJbJGatfa9pv4MZ3wjr8qWPAK",
         ],
         [
             "xprv9s21ZrQH143K2XTAhys3pMNcGn261Fi5Ta2Pw8PwaVPhg3D8DWkzWQwjTJfskj8ofb81i9NP2cUNKxwj",
-            "ueJHHMQAnxtivTA75uUFqPFeWzk"
+            "ueJHHMQAnxtivTA75uUFqPFeWzk",
         ],
         [
             "xprv9s21ZrQH143K3FperxDp8vFsFycKCRcJGAFmcV7umQmcnMZaLtZRt13QJDsoS5F6oYT6BB4sS6zmTmyQ",
-            "AEkJKxJ7yByDNtRe5asP2jFGhT6"
+            "AEkJKxJ7yByDNtRe5asP2jFGhT6",
         ],
         [
             "xprv9s21ZrQH143K3R1SfVZZLtVbXEB9ryVxmVtVMsMwmEyEvgXN6Q84LKkLRmf4ST6QrLeBm3jQsb9gx1uo",
-            "23TS7vo3vAkZGZz71uuLCcywUkt"
+            "23TS7vo3vAkZGZz71uuLCcywUkt",
         ],
         [
             "xprv9s21ZrQH143K2WNnKmssvZYM96VAr47iHUQUTUyUXH3sAGNjhJANddnhw3i3y3pBbRAVk5M5qUGFr4rH",
-            "bEWwXgX4qrvrceifCYQJbbFDems"
+            "bEWwXgX4qrvrceifCYQJbbFDems",
         ],
         [
             "xprv9s21ZrQH143K4G28omGMogEoYgDQuigBo8AFHAGDaJdqQ99QKMQ5J6fYTMfANTJy6xBmhvsNZ1CJzRZ6",
-            "4PWbnTFUn6CDV2FxoMDLXdk95DQ"
+            "4PWbnTFUn6CDV2FxoMDLXdk95DQ",
         ],
         [
             "xprv9s21ZrQH143K3wtsvY8L2aZyxkiWULZH4vyQE5XkHTXkmx8gHo6RUEfH3Jyr6NwkJhvano7Xb2o6UqFK",
-            "WHVo5scE31SGDCAUsgVhiUuUDyh"
+            "WHVo5scE31SGDCAUsgVhiUuUDyh",
         ],
         [
             "xprv9s21ZrQH143K3rEfqSM4QZRVmiMuSWY9wugscmaCjYja3SbUD3KPEB1a7QXJoajyR2T1SiXU7rFVRXMV",
-            "9XdYVSZe7JoUXdP4SRHTxsT1nzm"
+            "9XdYVSZe7JoUXdP4SRHTxsT1nzm",
         ],
         [
             "xprv9s21ZrQH143K2QWV9Wn8Vvs6jbqfF1YbTCdURQW9dLFKDovpKaKrqS3SEWsXCu6ZNky9PSAENg6c9AQY",
-            "Hcg4PjopRGGKmdD313ZHszymnps"
+            "Hcg4PjopRGGKmdD313ZHszymnps",
         ],
         [
             "xprv9s21ZrQH143K4aERa2bq7559eMCCEs2QmmqVjUuzfy5eAeDX4mqZffkYwpzGQRE2YEEeLVRoH4CSHxia",
-            "nrFaVnMN2RYaPUZJhJx8S5j6puX"
+            "nrFaVnMN2RYaPUZJhJx8S5j6puX",
         ],
         [
             "xprv9s21ZrQH143K39rnQJknpH1WEPFJrzmAqqasiDcVrNuk926oizzJDDQkdiTvNPr2FYDYzWgiMiC63Ymf",
-            "PAa2oPyNB23r2g7d1yiK6WpqaQS"
-        ]
+            "PAa2oPyNB23r2g7d1yiK6WpqaQS",
+        ],
     ];
 
     #[test]
@@ -1299,90 +1360,167 @@ mod tests {
     #[test]
     fn test_detect_lang() {
         assert_eq!(
-            [
-                "同", "考", "柳", "难", "昨", "玻", "渡", "鱼", "住", "理", "箱", "亩"
-            ].join(SPC).detect_lang().unwrap(),
+            ["同", "考", "柳", "难", "昨", "玻", "渡", "鱼", "住", "理", "箱", "亩"]
+                .join(SPC)
+                .detect_lang()
+                .unwrap(),
             chinese_simplified::CS
         );
         assert_eq!(
-            [
-                "同", "考", "柳", "難", "昨", "玻", "渡", "魚", "住", "理", "箱", "畝"
-            ].join(SPC).detect_lang().unwrap(),
+            ["同", "考", "柳", "難", "昨", "玻", "渡", "魚", "住", "理", "箱", "畝"]
+                .join(SPC)
+                .detect_lang()
+                .unwrap(),
             chinese_traditional::CT
         );
         assert_eq!(
             [
                 "army", "van", "defense", "carry", "jealous", "true", "garbage", "claim", "echo",
                 "media", "make", "crunch"
-            ].join(SPC).detect_lang().unwrap(),
+            ]
+            .join(SPC)
+            .detect_lang()
+            .unwrap(),
             english::E
         );
         assert_eq!(
             [
                 "army", "van", "offense", "carry", "jealous", "true", "garbage", "claim", "echo",
                 "media", "make", "crunch"
-            ].join(SPC).detect_lang().unwrap_err(),
+            ]
+            .join(SPC)
+            .detect_lang()
+            .unwrap_err(),
             Error::Word(String::from("offense"), String::from("defense"))
         );
         assert_eq!(
             [
                 "balvan", "kopnout", "soucit", "herna", "velmoc", "pecka", "rozinka", "karamel",
                 "hymna", "blud", "paruka", "porod"
-            ].join(SPC).detect_lang().unwrap(),
+            ]
+            .join(SPC)
+            .detect_lang()
+            .unwrap(),
             czech::CZ
         );
         assert_eq!(
             [
-                "adhésif", "éligible", "puzzle", "citoyen", "stable", "maintien","peigne",
-                "dioxyde", "cueillir", "alliage", "lundi", "mythique"
-            ].join(SPC).detect_lang().unwrap(),
+                "adhésif",
+                "éligible",
+                "puzzle",
+                "citoyen",
+                "stable",
+                "maintien",
+                "peigne",
+                "dioxyde",
+                "cueillir",
+                "alliage",
+                "lundi",
+                "mythique"
+            ]
+            .join(SPC)
+            .detect_lang()
+            .unwrap(),
             french::F
         );
         assert_eq!(
             [
-                "agonismo", "fenomeno", "schiena", "corolla", "tampone", "orzo", "ridurre",
-                "epilogo", "dinnanzi", "ametista", "orizzonte", "piombo"
-            ].join(SPC).detect_lang().unwrap(),
+                "agonismo",
+                "fenomeno",
+                "schiena",
+                "corolla",
+                "tampone",
+                "orzo",
+                "ridurre",
+                "epilogo",
+                "dinnanzi",
+                "ametista",
+                "orizzonte",
+                "piombo"
+            ]
+            .join(SPC)
+            .detect_lang()
+            .unwrap(),
             italian::I
         );
         assert_eq!(
             [
-                "あらし", "こぜん", "はなす", "ぎしき", "まよう", "ちしりょう", "にんにく",
-                "けまり", "くせげ", "いせき", "ちえん", "てみやげ"
-            ].join(IDS).detect_lang().unwrap(),
+                "あらし",
+                "こぜん",
+                "はなす",
+                "ぎしき",
+                "まよう",
+                "ちしりょう",
+                "にんにく",
+                "けまり",
+                "くせげ",
+                "いせき",
+                "ちえん",
+                "てみやげ"
+            ]
+            .join(IDS)
+            .detect_lang()
+            .unwrap(),
             japanese::J
         );
         assert_eq!(
             [
-                "강력히", "별도", "주민", "덩어리", "텔레비전", "예금",
-                "장식", "반드시", "명함", "결승", "영웅", "유행"
-            ].join(SPC).detect_lang().unwrap(),
+                "강력히",
+                "별도",
+                "주민",
+                "덩어리",
+                "텔레비전",
+                "예금",
+                "장식",
+                "반드시",
+                "명함",
+                "결승",
+                "영웅",
+                "유행"
+            ]
+            .join(SPC)
+            .detect_lang()
+            .unwrap(),
             korean::K
         );
         assert_eq!(
             [
                 "acusador", "donzela", "pulmonar", "carvalho", "sozinho", "loteria", "panfleto",
                 "dedal", "colmeia", "ajoelhar", "lixeira", "molusco"
-            ].join(SPC).detect_lang().unwrap(),
+            ]
+            .join(SPC)
+            .detect_lang()
+            .unwrap(),
             portuguese::P
         );
         assert_eq!(
             [
                 "afinar", "espuma", "regir", "cinco", "tarro", "motivo", "pisar", "dragón",
                 "cuento", "alteza", "moño", "oír"
-            ].join(SPC).detect_lang().unwrap(),
+            ]
+            .join(SPC)
+            .detect_lang()
+            .unwrap(),
             spanish::S
         );
         assert_eq!(
-            "thisisnotavalidwordinanylanguage".detect_lang().unwrap_err(),
-            Error::Word(String::from("thisisnotavalidwordinanylanguage"), String::new())
+            "thisisnotavalidwordinanylanguage"
+                .detect_lang()
+                .unwrap_err(),
+            Error::Word(
+                String::from("thisisnotavalidwordinanylanguage"),
+                String::new()
+            )
         );
         // in case of 50/50 of any other language with english, assume english
         assert_eq!(
             [
                 "digitar", "subtrair", "obrigado", "prancha", "plumagem", "vasilha", "fun",
                 "trash", "sport", "alley", "decade", "spin"
-            ].join(SPC).detect_lang().unwrap_err(),
+            ]
+            .join(SPC)
+            .detect_lang()
+            .unwrap_err(),
             Error::Word(String::from("digitar"), String::from("digital"))
         );
         // stays with english
@@ -1390,7 +1528,10 @@ mod tests {
             [
                 "triagem", "subtrair", "obrigado", "prancha", "plumagem", "test", "fun", "trash",
                 "sport", "alley", "decade", "spin"
-            ].join(SPC).detect_lang().unwrap_err(),
+            ]
+            .join(SPC)
+            .detect_lang()
+            .unwrap_err(),
             Error::Word(String::from("triagem"), String::from("trigger"))
         );
         // decides it's portuguese and suggest accordingly
@@ -1398,7 +1539,10 @@ mod tests {
             [
                 "firmeza", "subtrair", "obrigado", "prancha", "plumagem", "acima", "abaixo",
                 "eager", "sport", "alley", "test", "spin"
-            ].join(SPC).detect_lang().unwrap_err(),
+            ]
+            .join(SPC)
+            .detect_lang()
+            .unwrap_err(),
             Error::Word(String::from("eager"), String::from("exagero"))
         );
     }
@@ -1408,7 +1552,7 @@ mod tests {
         let mut bytes = [0x00; 64];
         for (idx, seed) in TV_SEED.iter().enumerate() {
             bytes[..].copy_from_slice(&seed.concat().hex_bytes().unwrap());
-            assert_eq!( bytes.extended_key(&XPRV).unwrap(), TV_XKEY[idx].concat());
+            assert_eq!(bytes.extended_key(&XPRV).unwrap(), TV_XKEY[idx].concat());
         }
     }
 
@@ -1416,35 +1560,36 @@ mod tests {
     fn test_handle_arguments() {
         for (idx, ent) in TV_ENTROPY.iter().enumerate() {
             assert_eq!(
-                handle_arguments(&init_clap().get_matches_from(vec!["", ent])).unwrap(), ()
+                handle_arguments(&init_clap().get_matches_from(vec!["", ent])).unwrap(),
+                ()
             );
-            assert!(
-                handle_arguments(
-                    &init_clap().get_matches_from(vec!["", &TV_SEED[idx].concat()])
-                ).is_ok()
-            );
+            assert!(handle_arguments(
+                &init_clap().get_matches_from(vec!["", &TV_SEED[idx].concat()])
+            )
+            .is_ok());
             let mut args = vec![""];
             let mnemonic = TV_MNEMONIC[idx].join(SPC);
             args.append(
-                &mut mnemonic.trim_end()
+                &mut mnemonic
+                    .trim_end()
                     .split_whitespace()
-                    .collect::<Vec<&str>>()
+                    .collect::<Vec<&str>>(),
             );
             assert!(handle_arguments(&init_clap().get_matches_from(args)).is_ok(),);
         }
         let argument = ["a"; LEN_SEED + 1];
         for nb_hex_char in 1..LEN_SEED + 1 {
             if LEN_ENT.contains(&nb_hex_char) || nb_hex_char == LEN_SEED {
-                assert!(
-                    handle_arguments(
-                        &init_clap().get_matches_from(&["", &argument[..nb_hex_char].concat()])
-                    ).is_ok()
-                );
+                assert!(handle_arguments(
+                    &init_clap().get_matches_from(&["", &argument[..nb_hex_char].concat()])
+                )
+                .is_ok());
             } else {
                 assert_eq!(
                     handle_arguments(
                         &init_clap().get_matches_from(&["", &argument[..nb_hex_char].concat()])
-                    ).unwrap_err(),
+                    )
+                    .unwrap_err(),
                     Error::Data(
                         argument[..nb_hex_char].concat(),
                         argument[..nb_hex_char].concat().len()
@@ -1452,15 +1597,24 @@ mod tests {
                 );
             }
         }
-        assert!(
-            handle_arguments(
-                &init_clap().get_matches_from(&[
-                    "", "あらし", "こぜん", "はなす", "ぎしき", "まよう", "ちしりょう", "にんにく",
-                    "けまり", "くせげ", "いせき", "ちえん", "てみやげ"
-                ])
-            ).is_ok()
-        );
-        assert_eq!( // first: binary name
+        assert!(handle_arguments(&init_clap().get_matches_from(&[
+            "",
+            "あらし",
+            "こぜん",
+            "はなす",
+            "ぎしき",
+            "まよう",
+            "ちしりょう",
+            "にんにく",
+            "けまり",
+            "くせげ",
+            "いせき",
+            "ちえん",
+            "てみやげ"
+        ]))
+        .is_ok());
+        assert_eq!(
+            // first: binary name
             handle_arguments(&init_clap().get_matches_from(&[""; 3])).unwrap_err(),
             Error::NbWords(2)
         );
@@ -1469,33 +1623,29 @@ mod tests {
             Error::NbWords(9)
         );
         assert_eq!(
-            handle_arguments(
-                &init_clap().get_matches_from(&["", &["a"; 32].concat(), "-g"])
-            ).unwrap_err(),
+            handle_arguments(&init_clap().get_matches_from(&["", &["a"; 32].concat(), "-g"]))
+                .unwrap_err(),
             Error::Flag(String::from("g"))
         );
         assert_eq!(
             handle_arguments(
                 &init_clap().get_matches_from(&["", "-g", "invalid", "number", "of", "words"])
-            ).unwrap_err(),
+            )
+            .unwrap_err(),
             Error::NbWords(4)
         );
         assert_eq!(
-            handle_arguments(
-                &init_clap().get_matches_from(&[
-                    "", "-g", "invalid", "number", "of", "words", "5", "6", "7", "8", "9", "10",
-                    "11"
-                ])
-            ).unwrap_err(),
+            handle_arguments(&init_clap().get_matches_from(&[
+                "", "-g", "invalid", "number", "of", "words", "5", "6", "7", "8", "9", "10", "11"
+            ]))
+            .unwrap_err(),
             Error::NbWords(11)
         );
         assert_eq!(
-            handle_arguments(
-                &init_clap().get_matches_from(&[
-                    "", "-j", "invalid", "number", "of", "words", "5", "6", "7", "8", "9", "10",
-                    "11"
-                ])
-            ).unwrap_err(),
+            handle_arguments(&init_clap().get_matches_from(&[
+                "", "-j", "invalid", "number", "of", "words", "5", "6", "7", "8", "9", "10", "11"
+            ]))
+            .unwrap_err(),
             Error::NbWords(11)
         );
     }
@@ -1515,78 +1665,105 @@ mod tests {
     #[test]
     fn test_init_clap() {
         for (idx, ent) in TV_ENTROPY.iter().enumerate() {
-            assert!(&init_clap().get_matches_from_safe(vec!["", ent]).is_ok());
-            assert!(&init_clap().get_matches_from_safe(vec!["", &TV_SEED[idx].concat()]).is_ok());
+            assert!(&init_clap().try_get_matches_from(vec!["", ent]).is_ok());
+            assert!(&init_clap()
+                .try_get_matches_from(vec!["", &TV_SEED[idx].concat()])
+                .is_ok());
             let mut args = vec![""];
             let mnemonic = TV_MNEMONIC[idx].join(SPC);
             args.append(
-                &mut mnemonic.trim_end()
+                &mut mnemonic
+                    .trim_end()
                     .split_whitespace()
-                    .collect::<Vec<&str>>()
+                    .collect::<Vec<&str>>(),
             );
-            assert!(&init_clap().get_matches_from_safe(args).is_ok());
+            assert!(&init_clap().try_get_matches_from(args).is_ok());
         }
         let mnemonic = TV_MNEMONIC[0].join(SPC);
         for flag in &LANG_FLAGS {
             let raw_flag = ["-", flag].concat();
             let mut args = vec!["", &raw_flag];
             args.append(
-                &mut mnemonic.trim_end()
+                &mut mnemonic
+                    .trim_end()
                     .split_whitespace()
-                    .collect::<Vec<&str>>()
+                    .collect::<Vec<&str>>(),
             );
-            assert!(&init_clap().get_matches_from_safe(&args).is_ok());
+            assert!(&init_clap().try_get_matches_from(&args).is_ok());
         }
-        assert!(
-            &init_clap().get_matches_from_safe(
-                &[
-                    "", "あらし", "こぜん", "はなす", "ぎしき", "まよう", "ちしりょう",
-                    "にんにく", "けまり", "くせげ", "いせき", "ちえん", "てみやげ"
-                ]
-            ).is_ok()
-        );
+        assert!(&init_clap()
+            .try_get_matches_from(&[
+                "",
+                "あらし",
+                "こぜん",
+                "はなす",
+                "ぎしき",
+                "まよう",
+                "ちしりょう",
+                "にんにく",
+                "けまり",
+                "くせげ",
+                "いせき",
+                "ちえん",
+                "てみやげ"
+            ])
+            .is_ok());
     }
 
     #[test]
     fn test_invalid_word() {
         for mnemonic in &TV_MNEMONIC {
             assert_eq!(
-                mnemonic.join(SPC).trim_end().invalid_word(&english::E), None
+                mnemonic.join(SPC).trim_end().invalid_word(&english::E),
+                None
             );
         }
-        let cs = ["同", "考", "柳", "难", "昨", "玻", "渡", "鱼", "住", "理", "箱", "亩"];
+        let cs = [
+            "同", "考", "柳", "难", "昨", "玻", "渡", "鱼", "住", "理", "箱", "亩",
+        ];
         assert_eq!(cs.join(SPC).invalid_word(&chinese_simplified::CS), None);
         assert_eq!(
             cs.join(SPC).invalid_word(&chinese_traditional::CT),
             Some((String::from("难"), 75.0))
         );
-        assert_eq!("\u{20}\u{3000}".invalid_word(&english::E), Some((String::from(""), 0.0)));
+        assert_eq!(
+            "\u{20}\u{3000}".invalid_word(&english::E),
+            Some((String::from(""), 0.0))
+        );
         assert_eq!(
             [
                 "firmeza", "subtrair", "obrigado", "prancha", "plumagem", "vasilha", "fun",
                 "trash", "sport", "alley", "decade", "spin"
-            ].join(SPC).invalid_word(&english::E),
+            ]
+            .join(SPC)
+            .invalid_word(&english::E),
             Some((String::from("firmeza"), 50.0))
         );
         assert_eq!(
             [
                 "firmeza", "subtrair", "obrigado", "prancha", "plumagem", "vasilha", "fun",
                 "trash", "sport", "alley", "decade", "spin"
-            ].join(SPC).invalid_word(&portuguese::P),
+            ]
+            .join(SPC)
+            .invalid_word(&portuguese::P),
             Some((String::from("fun"), 50.0))
         );
         assert_eq!(
             [
                 "firmeza", "subtrair", "obrigado", "among", "push", "test", "fun", "trash",
                 "sport", "alley", "decade", "spin"
-            ].join(SPC).invalid_word(&english::E),
+            ]
+            .join(SPC)
+            .invalid_word(&english::E),
             Some((String::from("firmeza"), 75.0))
         );
         assert_eq!(
             [
                 "firmeza", "subtrair", "obrigado", "prancha", "plumagem", "vasilha", "adega",
                 "acima", "abaixo", "alley", "decade", "spin"
-            ].join(SPC).invalid_word(&portuguese::P),
+            ]
+            .join(SPC)
+            .invalid_word(&portuguese::P),
             Some((String::from("alley"), 75.0))
         );
     }
@@ -1605,14 +1782,20 @@ mod tests {
             [
                 "小", "又", "驻", "库", "单", "酒", "逼", "名", "受", "捕", "游", "姻", "乱", "充",
                 "邵", "警", "接", "龙", "含", "请", "梯", "垂", "暖"
-            ].join(SPC).last_word().unwrap(),
+            ]
+            .join(SPC)
+            .last_word()
+            .unwrap(),
             ["它", "严", "送", "祖", "辩", "潜", "炒", "疯"]
         );
         assert_eq!(
             [
                 "籌", "驟", "意", "厘", "紀", "玻", "雷", "暗", "奇", "決", "層", "毒", "疆", "寸",
                 "隙", "佔", "筒", "蘭", "環", "槽", "夾", "浙", "唯"
-            ].join(SPC).last_word().unwrap(),
+            ]
+            .join(SPC)
+            .last_word()
+            .unwrap(),
             ["它", "候", "怎", "孫", "俄", "珍", "鞏", "枯"]
         );
         assert_eq!(
@@ -1620,7 +1803,10 @@ mod tests {
                 "svisle", "mrzutost", "astronom", "jalovec", "kalamita", "podraz", "obrys", "slib",
                 "emoce", "plamen", "skrz", "pasivita", "panna", "zavalit", "podepsat", "nymfa",
                 "bitva", "nelibost", "samizdat", "celer", "granule", "nejprve", "charita"
-            ].join(SPC).last_word().unwrap(),
+            ]
+            .join(SPC)
+            .last_word()
+            .unwrap(),
             ["adresa", "epopej", "krystal", "navenek", "pastelka", "prahory", "tajga", "zezadu"]
         );
         assert_eq!(
@@ -1628,50 +1814,160 @@ mod tests {
                 "vital", "virus", "wait", "nuclear", "foil", "reopen", "portion", "conduct",
                 "pudding", "much", "valid", "welcome", "travel", "spray", "valley", "actress",
                 "fatigue", "farm", "major", "hero", "real", "setup", "nut"
-            ].join(SPC).last_word().unwrap(),
+            ]
+            .join(SPC)
+            .last_word()
+            .unwrap(),
             ["brass", "clip", "father", "hockey", "matrix", "pistol", "sweet", "utility"]
         );
         assert_eq!(
             [
-                "émulsion", "pratique", "prouesse", "instinct", "onduler", "pupitre", "minimal",
-                "durcir", "unique", "cassure", "requin", "score", "viande", "jouissif", "ogive",
-                "amertume", "filou", "xénon", "aider", "astre", "matière", "éolien", "odeur"
-            ].join(SPC).last_word().unwrap(),
+                "émulsion",
+                "pratique",
+                "prouesse",
+                "instinct",
+                "onduler",
+                "pupitre",
+                "minimal",
+                "durcir",
+                "unique",
+                "cassure",
+                "requin",
+                "score",
+                "viande",
+                "jouissif",
+                "ogive",
+                "amertume",
+                "filou",
+                "xénon",
+                "aider",
+                "astre",
+                "matière",
+                "éolien",
+                "odeur"
+            ]
+            .join(SPC)
+            .last_word()
+            .unwrap(),
             [
-                "bermuda", "chéquier", "élaborer", "ficeler", "logique", "patience", "refaire",
+                "bermuda",
+                "chéquier",
+                "élaborer",
+                "ficeler",
+                "logique",
+                "patience",
+                "refaire",
                 "torpille"
             ]
         );
         assert_eq!(
             [
-                "lancetta", "eppure", "riunione", "pennuto", "abolire", "vano", "topazio",
-                "annidato", "guanto", "staffa", "stiletto", "inoltrare", "parola", "costante",
-                "melodia", "attorno", "corredo", "inoltrare", "gazebo", "evaso", "raffica",
-                "decreto", "aspro"
-            ].join(SPC).last_word().unwrap(),
+                "lancetta",
+                "eppure",
+                "riunione",
+                "pennuto",
+                "abolire",
+                "vano",
+                "topazio",
+                "annidato",
+                "guanto",
+                "staffa",
+                "stiletto",
+                "inoltrare",
+                "parola",
+                "costante",
+                "melodia",
+                "attorno",
+                "corredo",
+                "inoltrare",
+                "gazebo",
+                "evaso",
+                "raffica",
+                "decreto",
+                "aspro"
+            ]
+            .join(SPC)
+            .last_word()
+            .unwrap(),
             ["angelo", "brodo", "emanato", "lumaca", "ottagono", "restauro", "situato", "zufolo"]
         );
         assert_eq!(
             [
-                "ぐんたい", "うりきれ", "おうべい", "くださる", "たもつ", "まさつ", "しへい",
-                "そんちょう", "けんにん", "しはらい", "さよく", "おんどけい", "えおり", "ふあん",
-                "ぬくもり", "きくらげ", "さくひん", "ついたち", "かがみ", "ほせい", "むさぼる",
-                "おくさま", "なにわ"
-            ].join(IDS).last_word().unwrap(),
+                "ぐんたい",
+                "うりきれ",
+                "おうべい",
+                "くださる",
+                "たもつ",
+                "まさつ",
+                "しへい",
+                "そんちょう",
+                "けんにん",
+                "しはらい",
+                "さよく",
+                "おんどけい",
+                "えおり",
+                "ふあん",
+                "ぬくもり",
+                "きくらげ",
+                "さくひん",
+                "ついたち",
+                "かがみ",
+                "ほせい",
+                "むさぼる",
+                "おくさま",
+                "なにわ"
+            ]
+            .join(IDS)
+            .last_word()
+            .unwrap(),
             [
-                "いけばな", "きちょう", "けつじょ", "しらせる", "たいこ", "なまえ", "ふきん",
+                "いけばな",
+                "きちょう",
+                "けつじょ",
+                "しらせる",
+                "たいこ",
+                "なまえ",
+                "ふきん",
                 "りんご"
             ]
         );
         assert_eq!(
             [
-                "여학생", "사나이", "졸음", "영향", "교환", "콘서트",
-                "클래식", "평소", "소금", "정성", "월급", "먼지", "난방",
-                "글씨", "피아노", "공사", "전문", "이력서", "고급", "애정",
-                "화학", "이것", "택시"
-            ].join(SPC).last_word().unwrap(),
+                "여학생",
+                "사나이",
+                "졸음",
+                "영향",
+                "교환",
+                "콘서트",
+                "클래식",
+                "평소",
+                "소금",
+                "정성",
+                "월급",
+                "먼지",
+                "난방",
+                "글씨",
+                "피아노",
+                "공사",
+                "전문",
+                "이력서",
+                "고급",
+                "애정",
+                "화학",
+                "이것",
+                "택시"
+            ]
+            .join(SPC)
+            .last_word()
+            .unwrap(),
             [
-                "그늘", "당연히", "보장", "신문", "연세", "작업", "친척",
+                "그늘",
+                "당연히",
+                "보장",
+                "신문",
+                "연세",
+                "작업",
+                "친척",
                 "피망"
             ]
         );
@@ -1681,16 +1977,39 @@ mod tests {
                 "negrito", "impacto", "charme", "enchente", "indireto", "roupa", "timidez",
                 "miolo", "gabarito", "intocado", "provador", "superior", "ciclone", "sondar",
                 "amolador", "populoso"
-            ].join(SPC).last_word().unwrap(),
+            ]
+            .join(SPC)
+            .last_word()
+            .unwrap(),
             [
                 "alterar", "captador", "dueto", "expulsar", "manada", "muscular", "rebolar",
                 "voleibol"
             ]
         );
         let s = [
-            "ficha", "ahogo", "fecha", "premio", "marfil", "gris", "hacer", "cadáver", "caída",
-            "vinagre", "gato", "defensa", "bomba", "ronco", "romper", "siete", "lote", "morro",
-            "salmón", "escudo", "pelar", "acoso", "alzar"
+            "ficha",
+            "ahogo",
+            "fecha",
+            "premio",
+            "marfil",
+            "gris",
+            "hacer",
+            "cadáver",
+            "caída",
+            "vinagre",
+            "gato",
+            "defensa",
+            "bomba",
+            "ronco",
+            "romper",
+            "siete",
+            "lote",
+            "morro",
+            "salmón",
+            "escudo",
+            "pelar",
+            "acoso",
+            "alzar",
         ];
         assert_eq!(
             s.join(SPC).last_word().unwrap(),
@@ -1700,9 +2019,7 @@ mod tests {
         assert_eq!(s[..17].join(SPC).last_word().unwrap().len(), 32);
         assert_eq!(s[..14].join(SPC).last_word().unwrap().len(), 64);
         assert_eq!(s[..11].join(SPC).last_word().unwrap().len(), 128);
-        assert_eq!(
-            s[..7].join(SPC).last_word().unwrap_err(), Error::NbWords(7)
-        );
+        assert_eq!(s[..7].join(SPC).last_word().unwrap_err(), Error::NbWords(7));
     }
 
     #[test]
@@ -1712,7 +2029,10 @@ mod tests {
                 "agree", "expire", "shallow", "cram", "timber", "neglect", "regular", "eight",
                 "detail", "any", "name", "pass", "fiber", "cook", "museum", "column", "inflict",
                 "sentence", "gaze", "audit", "simple", "slender", "hub", "addict"
-            ].join(SPC).mnemonic_bytes().unwrap(),
+            ]
+            .join(SPC)
+            .mnemonic_bytes()
+            .unwrap(),
             [
                 0x05, 0x0a, 0x0f, 0x14, 0x19, 0x1e, 0x23, 0x28, 0x2d, 0x32, 0x37, 0x3c, 0x41, 0x46,
                 0x4b, 0x50, 0x55, 0x5a, 0x5f, 0x64, 0x69, 0x6e, 0x73, 0x78, 0x7d, 0x82, 0x87, 0x8c,
@@ -1724,7 +2044,10 @@ mod tests {
                 "agree", "expire", "shallow", "cram", "timber", "neglect", "regular", "eight",
                 "detail", "any", "name", "pass", "fiber", "cook", "museum", "column", "inflict",
                 "sentence", "gaze", "audit", "solid"
-            ].join(SPC).mnemonic_bytes().unwrap(),
+            ]
+            .join(SPC)
+            .mnemonic_bytes()
+            .unwrap(),
             [
                 0x05, 0x0a, 0x0f, 0x14, 0x19, 0x1e, 0x23, 0x28, 0x2d, 0x32, 0x37, 0x3c, 0x41, 0x46,
                 0x4b, 0x50, 0x55, 0x5a, 0x5f, 0x64, 0x69, 0x6e, 0x73, 0x78, 0x7d, 0x82, 0x87, 0x8c,
@@ -1736,7 +2059,10 @@ mod tests {
                 "agree", "expire", "shallow", "cram", "timber", "neglect", "regular", "eight",
                 "detail", "any", "name", "pass", "fiber", "cook", "museum", "column", "inflict",
                 "setup"
-            ].join(SPC).mnemonic_bytes().unwrap(),
+            ]
+            .join(SPC)
+            .mnemonic_bytes()
+            .unwrap(),
             [
                 0x05, 0x0a, 0x0f, 0x14, 0x19, 0x1e, 0x23, 0x28, 0x2d, 0x32, 0x37, 0x3c, 0x41, 0x46,
                 0x4b, 0x50, 0x55, 0x5a, 0x5f, 0x64, 0x69, 0x6e, 0x73, 0x78, 0x90
@@ -1746,7 +2072,10 @@ mod tests {
             [
                 "agree", "expire", "shallow", "cram", "timber", "neglect", "regular", "eight",
                 "detail", "any", "name", "pass", "fiber", "cook", "move"
-            ].join(SPC).mnemonic_bytes().unwrap(),
+            ]
+            .join(SPC)
+            .mnemonic_bytes()
+            .unwrap(),
             [
                 0x05, 0x0a, 0x0f, 0x14, 0x19, 0x1e, 0x23, 0x28, 0x2d, 0x32, 0x37, 0x3c, 0x41, 0x46,
                 0x4b, 0x50, 0x55, 0x5a, 0x5f, 0x64, 0x30
@@ -1754,72 +2083,140 @@ mod tests {
         );
         let bytes = [
             0x05, 0x0a, 0x0f, 0x14, 0x19, 0x1e, 0x23, 0x28, 0x2d, 0x32, 0x37, 0x3c, 0x41, 0x46,
-            0x4b, 0x50, 0xf0
+            0x4b, 0x50, 0xf0,
         ];
         assert_eq!(
             [
                 "agree", "expire", "shallow", "cram", "timber", "neglect", "regular", "eight",
                 "detail", "any", "name", "peanut"
-            ].join(SPC).mnemonic_bytes().unwrap(),
+            ]
+            .join(SPC)
+            .mnemonic_bytes()
+            .unwrap(),
             bytes
         );
         assert_eq!(
             ["同", "考", "柳", "难", "昨", "玻", "渡", "鱼", "住", "理", "箱", "亩"]
-                .join(SPC).mnemonic_bytes().unwrap(),
+                .join(SPC)
+                .mnemonic_bytes()
+                .unwrap(),
             bytes
         );
         assert_eq!(
             ["同", "考", "柳", "難", "昨", "玻", "渡", "魚", "住", "理", "箱", "畝"]
-                .join(SPC).mnemonic_bytes().unwrap(),
+                .join(SPC)
+                .mnemonic_bytes()
+                .unwrap(),
             bytes
         );
         assert_eq!(
             [
                 "balvan", "kopnout", "soucit", "herna", "velmoc", "pecka", "rozinka", "karamel",
                 "hymna", "blud", "paruka", "porod"
-            ].join(SPC).mnemonic_bytes().unwrap(),
+            ]
+            .join(SPC)
+            .mnemonic_bytes()
+            .unwrap(),
             bytes
         );
         assert_eq!(
             [
-                "adhésif", "éligible", "puzzle", "citoyen", "stable", "maintien", "peigne",
-                "dioxyde", "cueillir", "alliage", "lundi", "mythique"
-            ].join(SPC).mnemonic_bytes().unwrap(),
+                "adhésif",
+                "éligible",
+                "puzzle",
+                "citoyen",
+                "stable",
+                "maintien",
+                "peigne",
+                "dioxyde",
+                "cueillir",
+                "alliage",
+                "lundi",
+                "mythique"
+            ]
+            .join(SPC)
+            .mnemonic_bytes()
+            .unwrap(),
             bytes
         );
         assert_eq!(
             [
-                "agonismo", "fenomeno", "schiena", "corolla", "tampone", "orzo", "ridurre",
-                "epilogo", "dinnanzi", "ametista", "orizzonte", "piombo"
-            ].join(SPC).mnemonic_bytes().unwrap(),
+                "agonismo",
+                "fenomeno",
+                "schiena",
+                "corolla",
+                "tampone",
+                "orzo",
+                "ridurre",
+                "epilogo",
+                "dinnanzi",
+                "ametista",
+                "orizzonte",
+                "piombo"
+            ]
+            .join(SPC)
+            .mnemonic_bytes()
+            .unwrap(),
             bytes
         );
         assert_eq!(
             [
-                "あらし", "こぜん", "はなす", "ぎしき", "まよう", "ちしりょう", "にんにく",
-                "けまり", "くせげ", "いせき", "ちえん", "てみやげ"
-            ].join(IDS).mnemonic_bytes().unwrap(),
+                "あらし",
+                "こぜん",
+                "はなす",
+                "ぎしき",
+                "まよう",
+                "ちしりょう",
+                "にんにく",
+                "けまり",
+                "くせげ",
+                "いせき",
+                "ちえん",
+                "てみやげ"
+            ]
+            .join(IDS)
+            .mnemonic_bytes()
+            .unwrap(),
             bytes
         );
         assert_eq!(
             [
-                "강력히", "별도", "주민", "덩어리", "텔레비전", "예금",
-                "장식", "반드시", "명함", "결승", "영웅", "유행"
-            ].join(SPC).mnemonic_bytes().unwrap(),
+                "강력히",
+                "별도",
+                "주민",
+                "덩어리",
+                "텔레비전",
+                "예금",
+                "장식",
+                "반드시",
+                "명함",
+                "결승",
+                "영웅",
+                "유행"
+            ]
+            .join(SPC)
+            .mnemonic_bytes()
+            .unwrap(),
             bytes
         );
         assert_eq!(
             [
                 "acusador", "donzela", "pulmonar", "carvalho", "sozinho", "loteria", "panfleto",
                 "dedal", "colmeia", "ajoelhar", "lixeira", "molusco"
-            ].join(SPC).mnemonic_bytes().unwrap(),
+            ]
+            .join(SPC)
+            .mnemonic_bytes()
+            .unwrap(),
             bytes
         );
         assert_eq!(
             [
                 "afinar", "espuma", "regir", "cinco", "tarro", "motivo", "pisar", "dragón",
                 "cuento", "alteza", "moño", "oír"
-            ].join(SPC).mnemonic_bytes().unwrap(),
+            ]
+            .join(SPC)
+            .mnemonic_bytes()
+            .unwrap(),
             bytes
         );
     }
@@ -1828,21 +2225,25 @@ mod tests {
     fn test_mnemonic_string() {
         for (idx, entropy) in TV_ENTROPY.iter().enumerate() {
             assert_eq!(
-                entropy.hex_bytes().unwrap()
-                .mnemonic_string(&english::E).unwrap(),
+                entropy
+                    .hex_bytes()
+                    .unwrap()
+                    .mnemonic_string(&english::E)
+                    .unwrap(),
                 TV_MNEMONIC[idx].join(SPC).trim_end()
             );
         }
         let bytes = [
             0x05, 0x0a, 0x0f, 0x14, 0x19, 0x1e, 0x23, 0x28, 0x2d, 0x32, 0x37, 0x3c, 0x41, 0x46,
-            0x4b, 0x50
+            0x4b, 0x50,
         ];
         assert_eq!(
             bytes.mnemonic_string(&english::E).unwrap(),
             [
                 "agree", "expire", "shallow", "cram", "timber", "neglect", "regular", "eight",
                 "detail", "any", "name", "peanut"
-            ].join(SPC)
+            ]
+            .join(SPC)
         );
         assert_eq!(
             bytes.mnemonic_string(&chinese_simplified::CS).unwrap(),
@@ -1857,49 +2258,96 @@ mod tests {
             [
                 "balvan", "kopnout", "soucit", "herna", "velmoc", "pecka", "rozinka", "karamel",
                 "hymna", "blud", "paruka", "porod"
-            ].join(SPC)
+            ]
+            .join(SPC)
         );
         assert_eq!(
             bytes.mnemonic_string(&french::F).unwrap(),
             [
-                "adhésif", "éligible", "puzzle", "citoyen", "stable", "maintien", "peigne",
-                "dioxyde", "cueillir", "alliage", "lundi", "mythique"
-            ].join(SPC)
+                "adhésif",
+                "éligible",
+                "puzzle",
+                "citoyen",
+                "stable",
+                "maintien",
+                "peigne",
+                "dioxyde",
+                "cueillir",
+                "alliage",
+                "lundi",
+                "mythique"
+            ]
+            .join(SPC)
         );
         assert_eq!(
             bytes.mnemonic_string(&italian::I).unwrap(),
             [
-                "agonismo", "fenomeno", "schiena", "corolla", "tampone", "orzo", "ridurre",
-                "epilogo", "dinnanzi", "ametista", "orizzonte", "piombo"
-            ].join(SPC)
+                "agonismo",
+                "fenomeno",
+                "schiena",
+                "corolla",
+                "tampone",
+                "orzo",
+                "ridurre",
+                "epilogo",
+                "dinnanzi",
+                "ametista",
+                "orizzonte",
+                "piombo"
+            ]
+            .join(SPC)
         );
         assert_eq!(
             bytes.mnemonic_string(&japanese::J).unwrap(),
             [
-                "あらし", "こぜん", "はなす", "ぎしき", "まよう", "ちしりょう", "にんにく",
-                "けまり", "くせげ", "いせき", "ちえん", "てみやげ"
-            ].join(IDS) // ideographic space when showing japanese mnemonic
+                "あらし",
+                "こぜん",
+                "はなす",
+                "ぎしき",
+                "まよう",
+                "ちしりょう",
+                "にんにく",
+                "けまり",
+                "くせげ",
+                "いせき",
+                "ちえん",
+                "てみやげ"
+            ]
+            .join(IDS) // ideographic space when showing japanese mnemonic
         );
         assert_eq!(
             bytes.mnemonic_string(&korean::K).unwrap(),
             [
-                "강력히", "별도", "주민", "덩어리", "텔레비전", "예금",
-                "장식", "반드시", "명함", "결승", "영웅", "유행"
-            ].join(SPC)
+                "강력히",
+                "별도",
+                "주민",
+                "덩어리",
+                "텔레비전",
+                "예금",
+                "장식",
+                "반드시",
+                "명함",
+                "결승",
+                "영웅",
+                "유행"
+            ]
+            .join(SPC)
         );
         assert_eq!(
             bytes.mnemonic_string(&portuguese::P).unwrap(),
             [
                 "acusador", "donzela", "pulmonar", "carvalho", "sozinho", "loteria", "panfleto",
                 "dedal", "colmeia", "ajoelhar", "lixeira", "molusco"
-            ].join(SPC)
+            ]
+            .join(SPC)
         );
         assert_eq!(
             bytes.mnemonic_string(&spanish::S).unwrap(),
             [
                 "afinar", "espuma", "regir", "cinco", "tarro", "motivo", "pisar", "dragón",
                 "cuento", "alteza", "moño", "oír"
-            ].join(SPC)
+            ]
+            .join(SPC)
         );
         assert_eq!(
             bytes[1..].mnemonic_string(&english::E).unwrap_err(),
@@ -1911,17 +2359,21 @@ mod tests {
     fn test_seed_bytes() {
         for (idx, mnemonic) in TV_MNEMONIC.iter().enumerate() {
             assert_eq!(
-                mnemonic.join(SPC)
+                mnemonic
+                    .join(SPC)
                     .trim_end()
                     .seed_bytes(TV_PASS)
+                    .unwrap()
                     .hex_string(),
                 TV_SEED[idx].concat()
             );
         }
         assert_ne!(
-            TV_MNEMONIC[0].join(SPC)
+            TV_MNEMONIC[0]
+                .join(SPC)
                 .trim_end()
                 .seed_bytes("LEDGER")
+                .unwrap()
                 .hex_string(),
             TV_SEED[0].concat()
         );
@@ -1963,11 +2415,11 @@ mod tests {
     #[test]
     fn test_show_trasposition() {
         for mnemonic in &TV_MNEMONIC {
-            assert!(
-                mnemonic.join(SPC)
-                    .trim_end()
-                    .show_transposition("j", "くるっぽー！").is_ok()
-            );
+            assert!(mnemonic
+                .join(SPC)
+                .trim_end()
+                .show_transposition("j", "くるっぽー！")
+                .is_ok());
         }
     }
 
@@ -1983,7 +2435,10 @@ mod tests {
         assert_eq!("motif".suggestion(&portuguese::P), "motim");
         assert_eq!("grass".suggestion(&spanish::S), "grasa");
         for wordlist in &WORDLISTS {
-            assert_eq!("notintendedtohavesuggestioninanylanguage".suggestion(&wordlist), "");
+            assert_eq!(
+                "notintendedtohavesuggestioninanylanguage".suggestion(&wordlist),
+                ""
+            );
             assert_eq!("%".suggestion(&wordlist), "");
         }
     }
@@ -1992,45 +2447,89 @@ mod tests {
     fn test_transposition() {
         let e = [
             "army", "van", "defense", "carry", "jealous", "true", "garbage", "claim", "echo",
-            "media", "make", "crunch"
+            "media", "make", "crunch",
         ];
-        let c = ["点", "挡", "眼", "器", "哥", "舒", "久", "示", "止", "累", "夏", "便"];
+        let c = [
+            "点", "挡", "眼", "器", "哥", "舒", "久", "示", "止", "累", "夏", "便",
+        ];
         assert_eq!(e.join(SPC).transposition("c").unwrap(), c.join(SPC));
         let f = [
-            "amour", "troupeau", "couteau", "brèche", "gustatif", "tenaille", "exécuter",
-            "capuche", "dicter", "lagune", "jaune", "cogner"
+            "amour",
+            "troupeau",
+            "couteau",
+            "brèche",
+            "gustatif",
+            "tenaille",
+            "exécuter",
+            "capuche",
+            "dicter",
+            "lagune",
+            "jaune",
+            "cogner",
         ];
         assert_eq!(c.join(SPC).transposition("f").unwrap(), f.join(SPC));
         let i = [
-            "anca", "unisono", "delta", "busta", "maiolica", "torrone", "globulo", "centesimo",
-            "endemico", "nome", "muto", "crostata"
+            "anca",
+            "unisono",
+            "delta",
+            "busta",
+            "maiolica",
+            "torrone",
+            "globulo",
+            "centesimo",
+            "endemico",
+            "nome",
+            "muto",
+            "crostata",
         ];
         assert_eq!(f.join(SPC).transposition("i").unwrap(), i.join(SPC));
         let j = [
-            "いつか", "ゆうべ", "ぐあい", "おしえる", "せびろ", "むすめ", "さわる", "かいわ",
-            "けなみ", "たたく", "たいふう", "きなこ"
+            "いつか",
+            "ゆうべ",
+            "ぐあい",
+            "おしえる",
+            "せびろ",
+            "むすめ",
+            "さわる",
+            "かいわ",
+            "けなみ",
+            "たたく",
+            "たいふう",
+            "きなこ",
         ];
         assert_eq!(i.join(SPC).transposition("j").unwrap(), j.join(IDS));
         let k = [
-            "경주", "한복", "매년", "깍두기", "승용차", "포장", "사전",
-            "농업", "바닷가", "얼음", "액수", "뒷산"
+            "경주",
+            "한복",
+            "매년",
+            "깍두기",
+            "승용차",
+            "포장",
+            "사전",
+            "농업",
+            "바닷가",
+            "얼음",
+            "액수",
+            "뒷산",
         ];
         assert_eq!(j.join(IDS).transposition("k").unwrap(), k.join(SPC));
         let o = [
             "alfinete", "trilogia", "citar", "berro", "graveto", "teimar", "evacuar", "broa",
-            "debitar", "jurista", "irritado", "cerrado"
+            "debitar", "jurista", "irritado", "cerrado",
         ];
         assert_eq!(k.join(SPC).transposition("o").unwrap(), o.join(SPC));
         let s = [
-            "amistad", "túnica", "costa", "broma", "juicio", "toalla", "furgón", "caña",
-            "domingo", "masivo", "maldad", "código"
+            "amistad", "túnica", "costa", "broma", "juicio", "toalla", "furgón", "caña", "domingo",
+            "masivo", "maldad", "código",
         ];
         assert_eq!(o.join(SPC).transposition("s").unwrap(), s.join(SPC));
-        let t = ["點", "擋", "眼", "器", "哥", "舒", "久", "示", "止", "累", "夏", "便"];
+        let t = [
+            "點", "擋", "眼", "器", "哥", "舒", "久", "示", "止", "累", "夏", "便",
+        ];
         assert_eq!(o.join(SPC).transposition("t").unwrap(), t.join(SPC));
         let z = [
             "bouda", "vzpoura", "hrdina", "doufat", "nejprve", "vrhat", "limetka", "facka",
-            "kapela", "operace", "ofsajd", "hoboj"
+            "kapela", "operace", "ofsajd", "hoboj",
         ];
         assert_eq!(t.join(SPC).transposition("z").unwrap(), z.join(SPC));
         assert_eq!(z.join(SPC).transposition("e").unwrap(), e.join(SPC));

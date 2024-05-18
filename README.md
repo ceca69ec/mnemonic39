@@ -86,35 +86,31 @@ zprvAWgYBBk7JR8GjQdaFzTSaQeJaCj3Xvu99ED9J5MvxumnvSSXho8ZvNXDKxNqU3MRCbdJSZoHEAVk
 ## Help
 
 ```shell
-mnemonic39 1.0.5
 Enter optional language and hexadecimal entropy with optional passphrase or
 enter a list of mnemonic words with optional passphrase to see information
 about it. It can show a list of valid last words to fulfil a list of mnemonic
 words missing the last one. Generate mnemonic using a list of valid words.
 
-USAGE:
-    mnemonic39 [FLAGS] [OPTIONS] <DATA>...
+Usage: mnemonic39 [OPTIONS] [DATA]...
 
-FLAGS:
-    -c, --chinese        Mnemonic with chinese simplified words
-    -e, --english        Mnemonic with english words
-    -f, --french         Mnemonic with french words
-    -g, --generate       Generate valid mnemonics permuting words
-    -h, --help           Prints help information
-    -i, --italian        Mnemonic with italian words
-    -j, --japanese       Mnemonic with japanese words
-    -k, --korean         Mnemonic with korean words
-    -o, --portuguese     Mnemonic with portuguese words
-    -s, --spanish        Mnemonic with spanish words
-    -t, --traditional    Mnemonic with chinese traditional words
-    -V, --version        Prints version information
-    -z, --czech          Mnemonic with czech words
+Arguments:
+  [DATA]...  hexadecimal entropy, seed or a list of mnemonic words
 
-OPTIONS:
-    -p <passphrase>        optional passphrase to be used with the mnemonic
-
-ARGS:
-    <DATA>...    hexadecimal entropy, seed or a list of mnemonic words
+Options:
+  -c, --chinese        Mnemonic with chinese simplified words
+  -e, --english        Mnemonic with english words
+  -f, --french         Mnemonic with french words
+  -g, --generate       Generate valid mnemonics permuting words
+  -i, --italian        Mnemonic with italian words
+  -j, --japanese       Mnemonic with japanese words
+  -k, --korean         Mnemonic with korean words
+  -o, --portuguese     Mnemonic with portuguese words
+  -p <passphrase>      optional passphrase to be used with the mnemonic
+  -s, --spanish        Mnemonic with spanish words
+  -t, --traditional    Mnemonic with chinese traditional words
+  -z, --czech          Mnemonic with czech words
+  -h, --help           Print help
+  -V, --version        Print version
 ```
 
 ## Installation
